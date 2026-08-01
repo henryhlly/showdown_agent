@@ -23,7 +23,7 @@ showdown_agent/scripts/replays/
 showdown_agent/scripts/results/
 
 # ignore everything inside players/
-showdown_agent/scripts/players/*
+# showdown_agent/scripts/players/*
 
 # but do not ignore the players directory itself nor rename.py
 !showdown_agent/scripts/players/
