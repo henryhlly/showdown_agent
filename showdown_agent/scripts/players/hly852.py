@@ -127,7 +127,7 @@ class CustomAgent(Player):
                 best_score = damage
                 best_move = move
 
-        if self.should_switch(me, opp, battle):
+        if self.should_switch(me, opp, battle, opp_is_faster):
             switch_target = self.pick_best_switch(battle)
             if switch_target:
                 print("Switching to", switch_target.species)
@@ -162,8 +162,7 @@ class CustomAgent(Player):
         base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
         return base_damage * stab * type_multiplier
 
-
-    def should_switch(self, me, opp, battle):
+    def should_switch(self, me, opp, battle, opp_is_faster):
         if not battle.available_switches:
             print("No available switches.")
             return False
@@ -174,12 +173,8 @@ class CustomAgent(Player):
                 return True
 
         # If the opponent has a move that can KO us, consider switching
-        if opp.moves:
-            for move in opp.moves.values():
-                if move.base_power <= 0:
-                    continue
-                if self.is_super_effective(move.type, me.type_1, me.type_2, battle):
-                    return True
+        if self.opponent_can_ko(me, opp, battle, opp_is_faster):
+            return True
 
         # If opponent type has natural STAB on us, consider switching
         if opp.type_1 is not None and self.is_super_effective(opp.type_1, me.type_1, me.type_2, battle):
@@ -202,7 +197,7 @@ class CustomAgent(Player):
     def opponent_has_super_effective_move(self, opp, me, battle):
         for move in opp.moves.values():
             if move.base_power == 0:
-                continue  # skip status moves, they don't deal type-based damage this way
+                continue
             if self.is_super_effective(move.type, me.type_1, me.type_2, battle):
                 return True
         return False
@@ -213,3 +208,27 @@ class CustomAgent(Player):
             type_2,
             type_chart=battle._data.type_chart,
         ) >= 2.0
+
+    def opponent_can_ko(self, me, opp, battle, opp_is_faster):
+        if not opp.moves:
+            return False
+
+        worst_damage_frac = 0
+        for move in opp.moves.values():
+            if move.base_power <= 0:
+                continue
+            if self.move_goes_first(move, opp_is_faster):
+                continue
+            damage = self.calculate_damage(move, opp, me, battle)
+            damage_frac = damage / me.max_hp if me.max_hp else 0
+            worst_damage_frac = max(worst_damage_frac, damage_frac)
+
+        if worst_damage_frac >= me.current_hp_fraction and opp_is_faster:
+            return True
+
+        return False
+
+    def move_goes_first(self, move, opp_is_faster):
+        if move.priority > 0:
+            return True
+        return opp_is_faster
