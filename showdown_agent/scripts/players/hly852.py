@@ -217,16 +217,13 @@ class CustomAgent(Player):
         for move in opp.moves.values():
             if move.base_power <= 0:
                 continue
-            if self.move_goes_first(move, opp_is_faster):
+            if not self.move_goes_first(move, opp_is_faster):
                 continue
             damage = self.calculate_damage(move, opp, me, battle)
             damage_frac = damage / me.max_hp if me.max_hp else 0
             worst_damage_frac = max(worst_damage_frac, damage_frac)
 
-        if worst_damage_frac >= me.current_hp_fraction and opp_is_faster:
-            return True
-
-        return False
+        return worst_damage_frac >= me.current_hp_fraction
 
     def move_goes_first(self, move, opp_is_faster):
         if move.priority > 0:
