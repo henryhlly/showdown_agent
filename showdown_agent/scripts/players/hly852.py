@@ -130,7 +130,6 @@ class CustomAgent(Player):
         if self.should_switch(me, opp, battle, opp_is_faster):
             switch_target = self.pick_best_switch(battle)
             if switch_target:
-                print("Switching to", switch_target.species)
                 return self.create_order(switch_target)
 
         return self.create_order(best_move)
@@ -172,10 +171,6 @@ class CustomAgent(Player):
             if move.type not in me.types and move.type.damage_multiplier(opp.type_1, opp.type_2, type_chart=battle._data.type_chart) < 1:
                 return True
 
-        # If the opponent has a move that can KO us, consider switching
-        if self.opponent_can_ko(me, opp, battle, opp_is_faster):
-            return True
-
         # If opponent type has natural STAB on us, consider switching
         if opp.type_1 is not None and self.is_super_effective(opp.type_1, me.type_1, me.type_2, battle):
             if opp.type_2 is None:
@@ -186,7 +181,47 @@ class CustomAgent(Player):
         return False
 
     def pick_best_switch(self, battle):
-        return max(battle.available_switches, key=lambda mon: mon.current_hp_fraction)
+        opp = battle.opponent_active_pokemon
+        candidates = battle.available_switches
+
+        best_candidate = None
+        best_score = float("-inf")
+
+        for pokemon in candidates:
+            score = self.score_switch_candidate(pokemon, opp, battle)
+            if score > best_score:
+                best_score = score
+                best_candidate = pokemon
+
+        return best_candidate
+
+    def score_switch_candidate(self, candidate, opp, battle):
+        score = 0.0
+
+        # Defensive: penalize being weak to opponent's types
+        for opp_type in (opp.type_1, opp.type_2):
+            if opp_type is None:
+                continue
+            multiplier = opp_type.damage_multiplier(
+                candidate.type_1,
+                candidate.type_2,
+                type_chart=battle._data.type_chart
+            )
+            score -= multiplier
+
+        # Offensive: reward having super effective moves against opponent
+        for candidate_type in (candidate.type_1, candidate.type_2):
+            if candidate_type is None:
+                continue
+            multiplier = candidate_type.damage_multiplier(
+                opp.type_1,
+                opp.type_2,
+                type_chart=battle._data.type_chart
+            )
+            score += multiplier
+
+        score += candidate.current_hp_fraction
+        return score
 
     def teampreview(self, battle: AbstractBattle):
         """
@@ -208,22 +243,6 @@ class CustomAgent(Player):
             type_2,
             type_chart=battle._data.type_chart,
         ) >= 2.0
-
-    def opponent_can_ko(self, me, opp, battle, opp_is_faster):
-        if not opp.moves:
-            return False
-
-        worst_damage_frac = 0
-        for move in opp.moves.values():
-            if move.base_power <= 0:
-                continue
-            if not self.move_goes_first(move, opp_is_faster):
-                continue
-            damage = self.calculate_damage(move, opp, me, battle)
-            damage_frac = damage / me.max_hp if me.max_hp else 0
-            worst_damage_frac = max(worst_damage_frac, damage_frac)
-
-        return worst_damage_frac >= me.current_hp_fraction
 
     def move_goes_first(self, move, opp_is_faster):
         if move.priority > 0:
