@@ -12,36 +12,25 @@ Make sure to use the Uber Format
 """
 
 team = """
-Archaludon @ Leftovers  
-Ability: Stamina  
-Shiny: Yes  
-Tera Type: Steel  
-EVs: 252 HP / 204 Def / 52 SpD  
-Bold Nature  
+Ribombee @ Focus Sash  
+Ability: Shield Dust  
+Tera Type: Ghost  
+EVs: 252 SpA / 4 SpD / 252 Spe  
+Timid Nature  
 IVs: 0 Atk  
-- Flash Cannon  
-- Body Press  
-- Protect  
-- Stealth Rock  
-
-Urshifu-Rapid-Strike @ Choice Band  
-Ability: Unseen Fist  
-Tera Type: Fighting
-EVs: 252 Atk / 4 Def / 252 Spe  
-Adamant Nature  
-- Surging Strikes  
-- Aqua Jet  
-- U-turn  
-- Close Combat  
+- Sticky Web  
+- Psychic Noise  
+- Moonblast  
+- Stun Spore  
 
 Koraidon @ Life Orb  
 Ability: Orichalcum Pulse  
 Shiny: Yes  
-Tera Type: Fighting  
+Tera Type: Fire  
 EVs: 252 Atk / 4 Def / 252 Spe  
 Jolly Nature  
-- Low Kick  
-- Scale Shot  
+- Collision Course  
+- Flare Blitz  
 - Swords Dance  
 - Flame Charge  
 
@@ -57,26 +46,33 @@ IVs: 0 Atk
 - Psyshock  
 - Power Gem  
 
-Ogerpon-Hearthflame @ Hearthflame Mask  
-Ability: Mold Breaker  
-Tera Type: Fire  
+Zacian-Crowned @ Rusted Sword  
+Ability: Intrepid Sword  
 EVs: 252 Atk / 4 SpD / 252 Spe  
 Jolly Nature  
 - Swords Dance  
-- Ivy Cudgel  
-- Horn Leech  
-- Trailblaze  
+- Behemoth Blade  
+- Crunch  
+- Wild Charge  
 
-Ursaluna-Bloodmoon @ Leftovers  
-Ability: Mind's Eye  
-Tera Type: Ground  
-EVs: 4 Def / 252 SpA / 252 Spe  
-Modest Nature  
+Kyogre @ Choice Specs  
+Ability: Drizzle  
+EVs: 248 HP / 164 Def / 80 SpA / 16 Spe  
+Bold Nature  
 IVs: 0 Atk  
+- Origin Pulse  
+- Ice Beam  
 - Calm Mind  
-- Blood Moon  
-- Earth Power  
-- Moonlight  
+- Thunder  
+
+Ho-Oh @ Heavy-Duty Boots  
+Ability: Regenerator  
+EVs: 252 HP / 252 Def / 4 SpD  
+Impish Nature  
+- Sacred Fire  
+- Brave Bird  
+- Whirlwind  
+- Recover   
 
 """
 
@@ -115,6 +111,9 @@ class CustomAgent(Player):
         best_score = -1
 
         for move in battle.available_moves:
+
+            
+
             damage = self.calculate_damage(move, me, opp, battle)
             # Calculate max possible HP of opponent based on base stats and perfect EVs/IVs
             damage_fraction = damage / estimated_opp_max_hp if estimated_opp_max_hp else 0
@@ -159,11 +158,10 @@ class CustomAgent(Player):
         )
 
         base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
-        return base_damage * stab * type_multiplier
+        return base_damage * stab * type_multiplier * move.expected_hits
 
     def should_switch(self, me, opp, battle, opp_is_faster):
         if not battle.available_switches:
-            print("No available switches.")
             return False
 
         # If current pokemon only has resisted moves, consider switching
