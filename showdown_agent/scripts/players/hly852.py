@@ -1,4 +1,4 @@
-from poke_env.battle import AbstractBattle, MoveCategory
+from poke_env.battle import AbstractBattle, MoveCategory, SideCondition
 from poke_env.player import Player
 
 """
@@ -102,7 +102,8 @@ class CustomAgent(Player):
 
         estimated_opp_max_hp = (opp.base_stats["hp"] * 2) + 204
         estimated_opp_max_spe = ((2 * opp.base_stats["spe"] + 31 + 252 // 4) + 5) * 1.1
-        opp_is_faster = me.stats["spe"] < estimated_opp_max_spe if estimated_opp_max_spe else False
+        opp_spe = estimated_opp_max_spe if battle.opponent_side_conditions.get(SideCondition.STICKY_WEB) is None else estimated_opp_max_spe * 0.5
+        opp_is_faster = me.stats["spe"] < opp_spe
 
         if not battle.available_moves:
             return self.choose_random_move(battle)
@@ -111,19 +112,24 @@ class CustomAgent(Player):
         best_score = -1
 
         for move in battle.available_moves:
+            if move.base_power > 0:
+                score = self.calculate_damage(move, me, opp, battle)
+                # Calculate max possible HP of opponent based on base stats and perfect EVs/IVs
+                damage_fraction = score / estimated_opp_max_hp if estimated_opp_max_hp else 0
 
-            
+                print(f"Move: {move}, Damage Fraction: {damage_fraction:.2f}, Opponent HP Fraction: {opp.current_hp_fraction:.2f}")
+    
+                # If a move can KO the opponent, prioritize it
+                if damage_fraction >= opp.current_hp_fraction:
+                    return self.create_order(move)
 
-            damage = self.calculate_damage(move, me, opp, battle)
-            # Calculate max possible HP of opponent based on base stats and perfect EVs/IVs
-            damage_fraction = damage / estimated_opp_max_hp if estimated_opp_max_hp else 0
+            else:
+                score = self.calculate_status_score(move, me, opp, battle)
 
-            # If a move can KO the opponent, prioritize it
-            if damage_fraction >= opp.current_hp_fraction:
-                return self.create_order(move)
+            # print(f"Move: {move}, Score: {score}")
 
-            if damage > best_score:
-                best_score = damage
+            if score > best_score:
+                best_score = score
                 best_move = move
 
         if self.should_switch(me, opp, battle, opp_is_faster):
@@ -136,7 +142,7 @@ class CustomAgent(Player):
 
     def calculate_damage(self, move, user, target, battle):
         if move.base_power == 0:
-            return 0.0
+            return 0
 
         level = user.level
         if move.category == MoveCategory.PHYSICAL:
@@ -147,7 +153,7 @@ class CustomAgent(Player):
             defense_stat = target.base_stats["spd"]
 
         if defense_stat is None or attack_stat is None:
-            return 0.0
+            return 0
 
         power = move.base_power
         stab = 1.5 if move.type in user.types else 1.0
@@ -159,6 +165,32 @@ class CustomAgent(Player):
 
         base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
         return base_damage * stab * type_multiplier * move.expected_hits
+
+    def calculate_status_score(self, move, user, target, battle):
+        # Hazards
+        if move.id in ("stealthrock", "spikes", "toxicspikes", "stickyweb"):
+            if not battle.opponent_side_conditions.get(move.id):
+                return 70
+            return -1
+
+        # Boosts
+        if move.boosts:
+            if user.current_hp_fraction > 0.6:
+                return 55
+            return 5
+
+        # Status
+        if move.status is not None:
+            if target.status is not None:
+                return -1
+            return 45
+
+        # Recovery
+        if move.id in ("recover", "roost", "moonlight", "softboiled"):
+            missing_hp = 1 - user.current_hp_fraction
+            return 40 * missing_hp
+
+        return -1
 
     def should_switch(self, me, opp, battle, opp_is_faster):
         if not battle.available_switches:
