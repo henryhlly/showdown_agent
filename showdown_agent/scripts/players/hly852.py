@@ -100,7 +100,7 @@ class CustomAgent(Player):
         me = battle.active_pokemon
         opp = battle.opponent_active_pokemon
 
-        estimated_opp_max_hp = (opp.base_stats["hp"] * 2) + 204
+        
         estimated_opp_max_spe = ((2 * opp.base_stats["spe"] + 31 + 252 // 4) + 5) * 1.1
         opp_spe = estimated_opp_max_spe if battle.opponent_side_conditions.get(SideCondition.STICKY_WEB) is None else estimated_opp_max_spe * 0.5
         opp_is_faster = me.stats["spe"] < opp_spe
@@ -110,35 +110,25 @@ class CustomAgent(Player):
 
         best_move = battle.available_moves[0]
         best_score = -1
-
+        
         for move in battle.available_moves:
             if move.base_power > 0:
-                score = self.calculate_damage(move, me, opp, battle)
-                # Calculate max possible HP of opponent based on base stats and perfect EVs/IVs
-                damage_fraction = score / estimated_opp_max_hp if estimated_opp_max_hp else 0
-
-                print(f"Move: {move}, Damage Fraction: {damage_fraction:.2f}, Opponent HP Fraction: {opp.current_hp_fraction:.2f}")
-    
-                # If a move can KO the opponent, prioritize it
-                if damage_fraction >= opp.current_hp_fraction:
-                    return self.create_order(move)
-
+                score = self.calculate_move_score(move, me, opp, battle)
             else:
                 score = self.calculate_status_score(move, me, opp, battle)
 
-            # print(f"Move: {move}, Score: {score}")
+            print(f"Move: {move}, Score: {score}")
 
             if score > best_score:
                 best_score = score
                 best_move = move
 
-        if self.should_switch(me, opp, battle, opp_is_faster):
+        if self.should_switch(me, opp, battle):
             switch_target = self.pick_best_switch(battle)
             if switch_target:
                 return self.create_order(switch_target)
 
         return self.create_order(best_move)
-
 
     def calculate_damage(self, move, user, target, battle):
         if move.base_power == 0:
@@ -166,42 +156,61 @@ class CustomAgent(Player):
         base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
         return base_damage * stab * type_multiplier * move.expected_hits
 
+    def calculate_move_score(self, move, user, target, battle):
+        estimated_target_hp = (target.base_stats["hp"] * 2) + 204
+
+        damage = self.calculate_damage(move, user, target, battle)
+        # Calculate max possible HP of opponent based on base stats and perfect EVs/IVs
+        damage_fraction = damage / estimated_target_hp if estimated_target_hp else 0
+        score = damage_fraction * 100
+
+        # If a move can KO the opponent, prioritize it (1.15 is safety buffer)
+        if damage_fraction >= target.current_hp_fraction * 1.15:
+            score += 100
+
+        return score
+
     def calculate_status_score(self, move, user, target, battle):
         # Hazards
         if move.id in ("stealthrock", "spikes", "toxicspikes", "stickyweb"):
             if not battle.opponent_side_conditions.get(move.id):
-                return 70
+                return 200
             return -1
 
         # Boosts
         if move.boosts:
             if user.current_hp_fraction > 0.6:
-                return 55
-            return 5
+                return 100
+            return 20
 
         # Status
         if move.status is not None:
             if target.status is not None:
                 return -1
-            return 45
+            return 120
 
         # Recovery
         if move.id in ("recover", "roost", "moonlight", "softboiled"):
             missing_hp = 1 - user.current_hp_fraction
-            return 40 * missing_hp
+            return 200 * missing_hp
 
         return -1
 
-    def should_switch(self, me, opp, battle, opp_is_faster):
+    def should_switch(self, me, opp, battle):
         if not battle.available_switches:
             return False
 
-        # If current pokemon only has resisted moves, consider switching
+        no_good_moves = True
         for move in me.moves.values():
-            if move.type not in me.types and move.type.damage_multiplier(opp.type_1, opp.type_2, type_chart=battle._data.type_chart) < 1:
-                return True
+            if move.type in me.types or move.type.damage_multiplier(opp.type_1, opp.type_2, type_chart=battle._data.type_chart) > 1:
+                no_good_moves = False
+                break
 
-        # If opponent type has natural STAB on us, consider switching
+        # If current pokemon only has resisted moves, switch
+        if no_good_moves:
+            return True
+
+        # If opponent type has natural STAB on us, switch
         if opp.type_1 is not None and self.is_super_effective(opp.type_1, me.type_1, me.type_2, battle):
             if opp.type_2 is None:
                 return True
@@ -227,7 +236,6 @@ class CustomAgent(Player):
 
     def score_switch_candidate(self, candidate, opp, battle):
         score = 0.0
-
         # Defensive: penalize being weak to opponent's types
         for opp_type in (opp.type_1, opp.type_2):
             if opp_type is None:
@@ -253,12 +261,6 @@ class CustomAgent(Player):
         score += candidate.current_hp_fraction
         return score
 
-    def teampreview(self, battle: AbstractBattle):
-        """
-        SET THE TEAM ORDER HERE
-        """
-        return "/team 1"
-
     def opponent_has_super_effective_move(self, opp, me, battle):
         for move in opp.moves.values():
             if move.base_power == 0:
@@ -278,3 +280,9 @@ class CustomAgent(Player):
         if move.priority > 0:
             return True
         return opp_is_faster
+
+    def teampreview(self, battle: AbstractBattle):
+        """
+        SET THE TEAM ORDER HERE
+        """
+        return "/team 1"
