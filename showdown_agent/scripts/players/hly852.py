@@ -1,3 +1,5 @@
+import math
+
 from poke_env.battle import AbstractBattle, MoveCategory, SideCondition
 from poke_env.player import Player
 
@@ -100,7 +102,6 @@ class CustomAgent(Player):
         me = battle.active_pokemon
         opp = battle.opponent_active_pokemon
 
-        
         estimated_opp_max_spe = ((2 * opp.base_stats["spe"] + 31 + 252 // 4) + 5) * 1.1
         opp_spe = estimated_opp_max_spe if battle.opponent_side_conditions.get(SideCondition.STICKY_WEB) is None else estimated_opp_max_spe * 0.5
         opp_is_faster = me.stats["spe"] < opp_spe
@@ -116,8 +117,6 @@ class CustomAgent(Player):
                 score = self.calculate_move_score(move, me, opp, battle)
             else:
                 score = self.calculate_status_score(move, me, opp, battle)
-
-            print(f"Move: {move}, Score: {score}")
 
             if score > best_score:
                 best_score = score
@@ -137,10 +136,10 @@ class CustomAgent(Player):
         level = user.level
         if move.category == MoveCategory.PHYSICAL:
             attack_stat = user.stats["atk"]
-            defense_stat = target.base_stats["def"]
+            defense_stat = ((2 * target.base_stats["def"] + 31 + 252 // 4) + 5) * 1.1
         else:
             attack_stat = user.stats["spa"]
-            defense_stat = target.base_stats["spd"]
+            defense_stat = ((2 * target.base_stats["spd"] + 31 + 252 // 4) + 5) * 1.1
 
         if defense_stat is None or attack_stat is None:
             return 0
@@ -154,7 +153,7 @@ class CustomAgent(Player):
         )
 
         base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
-        return base_damage * stab * type_multiplier * move.expected_hits
+        return base_damage * stab * type_multiplier * move.expected_hits * 0.925
 
     def calculate_move_score(self, move, user, target, battle):
         estimated_target_hp = (target.base_stats["hp"] * 2) + 204
@@ -168,14 +167,21 @@ class CustomAgent(Player):
         if damage_fraction >= target.current_hp_fraction * 1.15:
             score += 100
 
-        return score
+        return math.floor(score)
 
+    HAZARD_CONDITIONS = {
+        "stealthrock": SideCondition.STEALTH_ROCK,
+        "spikes": SideCondition.SPIKES,
+        "toxicspikes": SideCondition.TOXIC_SPIKES,
+        "stickyweb": SideCondition.STICKY_WEB,
+    }
+    
     def calculate_status_score(self, move, user, target, battle):
         # Hazards
-        if move.id in ("stealthrock", "spikes", "toxicspikes", "stickyweb"):
-            if not battle.opponent_side_conditions.get(move.id):
+        if move.id in self.HAZARD_CONDITIONS:
+            if not battle.opponent_side_conditions.get(self.HAZARD_CONDITIONS[move.id]):
                 return 200
-            return -1
+            return 0
 
         # Boosts
         if move.boosts:
@@ -186,13 +192,13 @@ class CustomAgent(Player):
         # Status
         if move.status is not None:
             if target.status is not None:
-                return -1
+                return 0
             return 120
 
         # Recovery
         if move.id in ("recover", "roost", "moonlight", "softboiled"):
             missing_hp = 1 - user.current_hp_fraction
-            return 200 * missing_hp
+            return math.floor(200 * missing_hp)
 
         return -1
 
