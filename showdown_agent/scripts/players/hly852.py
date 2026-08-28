@@ -36,7 +36,7 @@ Jolly Nature
 - Swords Dance  
 - Flame Charge  
 
-Flutter Mane @ Choice Specs  
+Flutter Mane @ Life Orb 
 Ability: Protosynthesis  
 Shiny: Yes  
 Tera Type: Ghost  
@@ -57,7 +57,7 @@ Jolly Nature
 - Crunch  
 - Wild Charge  
 
-Kyogre @ Choice Specs  
+Kyogre @ Heavy Duty Boots
 Ability: Drizzle  
 EVs: 248 HP / 164 Def / 80 SpA / 16 Spe  
 Bold Nature  
@@ -79,6 +79,17 @@ Impish Nature
 """
 
 class CustomAgent(Player):
+
+    HAZARD_CONDITIONS = {
+        "stealthrock": SideCondition.STEALTH_ROCK,
+        "spikes": SideCondition.SPIKES,
+        "toxicspikes": SideCondition.TOXIC_SPIKES,
+        "stickyweb": SideCondition.STICKY_WEB,
+    }
+
+    POWDER_MOVES = {
+        "stunspore", "sleeppowder", "poisonpowder", "spore", "cottonspore", "rage powder"
+    }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, team=team, **kwargs)
@@ -118,11 +129,15 @@ class CustomAgent(Player):
             else:
                 score = self.calculate_status_score(move, me, opp, battle)
 
+            print(f"Move: {move}, Score: {score}")
+            
             if score > best_score:
                 best_score = score
                 best_move = move
 
-        if self.should_switch(me, opp, battle):
+        print("================================")
+
+        if best_score < 100 and self.should_switch(me, opp, battle):
             switch_target = self.pick_best_switch(battle)
             if switch_target:
                 return self.create_order(switch_target)
@@ -136,10 +151,10 @@ class CustomAgent(Player):
         level = user.level
         if move.category == MoveCategory.PHYSICAL:
             attack_stat = user.stats["atk"]
-            defense_stat = ((2 * target.base_stats["def"] + 31 + 252 // 4) + 5) * 1.1
+            defense_stat = ((2 * target.base_stats["def"]) + 5)
         else:
             attack_stat = user.stats["spa"]
-            defense_stat = ((2 * target.base_stats["spd"] + 31 + 252 // 4) + 5) * 1.1
+            defense_stat = ((2 * target.base_stats["spd"]) + 5)
 
         if defense_stat is None or attack_stat is None:
             return 0
@@ -169,14 +184,10 @@ class CustomAgent(Player):
 
         return math.floor(score)
 
-    HAZARD_CONDITIONS = {
-        "stealthrock": SideCondition.STEALTH_ROCK,
-        "spikes": SideCondition.SPIKES,
-        "toxicspikes": SideCondition.TOXIC_SPIKES,
-        "stickyweb": SideCondition.STICKY_WEB,
-    }
-    
     def calculate_status_score(self, move, user, target, battle):
+        if self.is_blocked_by_special_immunity(move, target):
+            return 0
+
         # Hazards
         if move.id in self.HAZARD_CONDITIONS:
             if not battle.opponent_side_conditions.get(self.HAZARD_CONDITIONS[move.id]):
@@ -185,7 +196,7 @@ class CustomAgent(Player):
 
         # Boosts
         if move.boosts:
-            if user.current_hp_fraction > 0.6:
+            if user.current_hp_fraction > 0.6 and not user.boosts:
                 return 100
             return 20
 
@@ -286,6 +297,30 @@ class CustomAgent(Player):
         if move.priority > 0:
             return True
         return opp_is_faster
+
+    def is_blocked_by_special_immunity(self, move, target):
+        if move.status is None:
+            return False
+        
+        # Powder moves (Grass is immune)
+        if move.id in self.POWDER_MOVES:
+            if "GRASS" in target.types:
+                return True
+
+        # Paralysis (Electric is immune)
+        if move.status.name == "PAR" and "ELECTRIC" in target.types:
+            return True
+
+        # Poison/Toxic (Poison and Steel is immune)
+        if move.status.name in ("PSN", "TOX"):
+            if "POISON" in target.types or "STEEL" in target.types:
+                return True
+
+        # Burn (Fire is immune)
+        if move.status.name == "BRN" and "FIRE" in target.types:
+            return True
+
+        return False
 
     def teampreview(self, battle: AbstractBattle):
         """
