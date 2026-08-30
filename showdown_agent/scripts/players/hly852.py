@@ -52,7 +52,7 @@ Zacian-Crowned @ Rusted Sword
 Ability: Intrepid Sword  
 EVs: 252 Atk / 4 SpD / 252 Spe  
 Jolly Nature  
-- Swords Dance  
+- Play Rough  
 - Behemoth Blade  
 - Crunch  
 - Wild Charge  
@@ -73,7 +73,7 @@ EVs: 252 HP / 252 Def / 4 SpD
 Impish Nature  
 - Sacred Fire  
 - Brave Bird  
-- Whirlwind  
+- Earthquake 
 - Recover   
 
 """
@@ -128,6 +128,10 @@ class CustomAgent(Player):
             if score > best_score:
                 best_score = score
                 best_move = move
+
+            # Logging for debugging purposes and analysis
+        #     print(f"{move.id}: {score}")
+        # print("================================")
 
         if best_score < 100 and self.should_switch(me, opp, battle):
             switch_target = self.pick_best_switch(battle)
