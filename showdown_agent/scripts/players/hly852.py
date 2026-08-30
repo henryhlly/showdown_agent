@@ -1,6 +1,6 @@
 import math
 
-from poke_env.battle import AbstractBattle, MoveCategory, SideCondition
+from poke_env.battle import AbstractBattle, MoveCategory, SideCondition, PokemonType
 from poke_env.player import Player
 
 """
@@ -113,10 +113,6 @@ class CustomAgent(Player):
         me = battle.active_pokemon
         opp = battle.opponent_active_pokemon
 
-        estimated_opp_max_spe = ((2 * opp.base_stats["spe"] + 31 + 252 // 4) + 5) * 1.1
-        opp_spe = estimated_opp_max_spe if battle.opponent_side_conditions.get(SideCondition.STICKY_WEB) is None else estimated_opp_max_spe * 0.5
-        opp_is_faster = me.stats["spe"] < opp_spe
-
         if not battle.available_moves:
             return self.choose_random_move(battle)
 
@@ -128,14 +124,10 @@ class CustomAgent(Player):
                 score = self.calculate_move_score(move, me, opp, battle)
             else:
                 score = self.calculate_status_score(move, me, opp, battle)
-
-            print(f"Move: {move}, Score: {score}")
             
             if score > best_score:
                 best_score = score
                 best_move = move
-
-        print("================================")
 
         if best_score < 100 and self.should_switch(me, opp, battle):
             switch_target = self.pick_best_switch(battle)
@@ -167,7 +159,7 @@ class CustomAgent(Player):
             type_chart=battle._data.type_chart
         )
 
-        base_damage = (((2 * level / 5 + 2) * power * attack_stat / defense_stat ) / 50 + 2)
+        base_damage = (((2 * level / 5 + 2) * power * (attack_stat / defense_stat)) / 50 + 2)
         return base_damage * stab * type_multiplier * move.expected_hits * 0.925
 
     def calculate_move_score(self, move, user, target, battle):
@@ -197,19 +189,19 @@ class CustomAgent(Player):
         # Boosts
         if move.boosts:
             if user.current_hp_fraction > 0.6 and not user.boosts:
-                return 100
+                return 70
             return 20
 
         # Status
         if move.status is not None:
             if target.status is not None:
                 return 0
-            return 120
+            return 80
 
         # Recovery
         if move.id in ("recover", "roost", "moonlight", "softboiled"):
             missing_hp = 1 - user.current_hp_fraction
-            return math.floor(200 * missing_hp)
+            return math.floor(100 * missing_hp)
 
         return -1
 
@@ -264,7 +256,7 @@ class CustomAgent(Player):
             )
             score -= multiplier
 
-        # Offensive: reward having super effective moves against opponent
+        # Offensive: reward having STAB against opponent
         for candidate_type in (candidate.type_1, candidate.type_2):
             if candidate_type is None:
                 continue
@@ -278,14 +270,6 @@ class CustomAgent(Player):
         score += candidate.current_hp_fraction
         return score
 
-    def opponent_has_super_effective_move(self, opp, me, battle):
-        for move in opp.moves.values():
-            if move.base_power == 0:
-                continue
-            if self.is_super_effective(move.type, me.type_1, me.type_2, battle):
-                return True
-        return False
-
     def is_super_effective(self, src_type, type_1, type_2, battle):
         return src_type.damage_multiplier(
             type_1,
@@ -293,31 +277,26 @@ class CustomAgent(Player):
             type_chart=battle._data.type_chart,
         ) >= 2.0
 
-    def move_goes_first(self, move, opp_is_faster):
-        if move.priority > 0:
-            return True
-        return opp_is_faster
-
     def is_blocked_by_special_immunity(self, move, target):
         if move.status is None:
             return False
         
         # Powder moves (Grass is immune)
         if move.id in self.POWDER_MOVES:
-            if "GRASS" in target.types:
+            if PokemonType.GRASS in target.types:
                 return True
 
         # Paralysis (Electric is immune)
-        if move.status.name == "PAR" and "ELECTRIC" in target.types:
+        if move.status.name == "PAR" and PokemonType.ELECTRIC in target.types:
             return True
 
         # Poison/Toxic (Poison and Steel is immune)
         if move.status.name in ("PSN", "TOX"):
-            if "POISON" in target.types or "STEEL" in target.types:
+            if PokemonType.POISON in target.types or PokemonType.STEEL in target.types:
                 return True
 
         # Burn (Fire is immune)
-        if move.status.name == "BRN" and "FIRE" in target.types:
+        if move.status.name == "BRN" and PokemonType.FIRE in target.types:
             return True
 
         return False
